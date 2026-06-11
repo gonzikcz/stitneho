@@ -414,12 +414,7 @@
       document.getElementById("prev").disabled = index === 0;
       document.getElementById("next").disabled = index === pictures.length - 1;
 
-      const hidden = hiddenPerPicture[index];
-      annEls.forEach((el, i) => {
-        el.classList.toggle("visible", !hidden.has(i + 1));
-      });
-      updateHighlights();
-      applyPositions(index);
+      annEls.forEach(el => el.classList.remove("visible"));
     }
 
     function selectByt(bytNum) {
@@ -522,6 +517,11 @@
     }
 
     document.getElementById("photo").addEventListener("load", function () {
+      const hidden = hiddenPerPicture[current];
+      annEls.forEach((el, i) => {
+        el.classList.toggle("visible", !hidden.has(i + 1));
+      });
+      updateHighlights();
       applyPositions(current);
     });
 
