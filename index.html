@@ -127,7 +127,7 @@
       color: #111;
       border: 2px solid #fff;
       border-radius: 50%;
-      cursor: default;
+      cursor: grab;
       transform: translate(-50%, -50%);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
       font-size: 11px;
@@ -144,6 +144,12 @@
       display: flex;
     }
 
+    .annotation.dragging {
+      cursor: grabbing;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8);
+      z-index: 20;
+    }
+
     .annotation.highlighted {
       background: #ff4422;
       color: #fff;
@@ -151,6 +157,10 @@
       box-shadow: 0 0 14px rgba(255, 68, 34, 0.85);
       transform: translate(-50%, -50%) scale(1.35);
       z-index: 15;
+    }
+
+    .annotation.dragging.highlighted {
+      z-index: 20;
     }
 
     .counter {
@@ -217,6 +227,57 @@
       color: #aaa;
       font-size: 0.78rem;
     }
+
+    .panels-col {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .info-box {
+      width: 175px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px 10px;
+      flex-shrink: 0;
+      display: none;
+    }
+
+    .info-box h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+      margin-bottom: 10px;
+    }
+
+    .komin-entry {
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    .komin-entry:last-child {
+      border-bottom: none;
+    }
+
+    .komin-num {
+      font-weight: bold;
+      color: #ffcc00;
+      margin-right: 4px;
+    }
+
+    .komin-vyuziti {
+      color: #eee;
+    }
+
+    .komin-poznamka {
+      color: #999;
+      font-size: 0.74rem;
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -240,11 +301,19 @@
       </div>
 
       <div class="counter" id="counter"></div>
+      <button id="export-btn" onclick="exportPositions()" style="margin-top:12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.8rem;">Copy positions (current picture)</button>
+      <div id="export-msg" style="margin-top:6px;font-size:0.75rem;color:#6f6;display:none;">Copied to clipboard!</div>
     </div>
 
-    <div class="side-panel">
-      <h2>Byty &amp; komíny</h2>
-      <div id="byt-list"></div>
+    <div class="panels-col">
+      <div class="side-panel">
+        <h2>Byty &amp; komíny</h2>
+        <div id="byt-list"></div>
+      </div>
+      <div class="info-box" id="info-box">
+        <h2>Využití komínů</h2>
+        <div id="komin-info-list"></div>
+      </div>
     </div>
   </div>
 
@@ -262,14 +331,39 @@
     let current = 0;
     let activeByt = null;
 
+    const kominyVyuziti = [
+      { komin:  1, vyuziti: 'krb?',                          poznamka: 'vyvložkováno nerezem průměrem 160mm přes bytovou jednotku č. 2 až do sklepa' },
+      { komin:  2, vyuziti: '',                               poznamka: '' },
+      { komin:  3, vyuziti: 'krb?',                          poznamka: 'vyvložkováno nerezem průměrem 160mm' },
+      { komin:  4, vyuziti: 'kotel?',                        poznamka: 'vyvložkováno nerezem 80/125 až do sklepa' },
+      { komin:  5, vyuziti: '',                               poznamka: '' },
+      { komin:  6, vyuziti: 'kotel?',                        poznamka: 'vyvložkována nerezem 80/125' },
+      { komin:  7, vyuziti: 'odpady',                        poznamka: 'není spalinová cesta' },
+      { komin:  8, vyuziti: '',                               poznamka: '' },
+      { komin:  9, vyuziti: '',                               poznamka: '' },
+      { komin: 10, vyuziti: '',                               poznamka: '' },
+      { komin: 11, vyuziti: '',                               poznamka: '' },
+      { komin: 12, vyuziti: '',                               poznamka: '' },
+      { komin: 13, vyuziti: 'kotel',                         poznamka: 'vyvložkováno kovovým materiálem až do sklepního prostoru pro využití atmosférického kotle' },
+      { komin: 14, vyuziti: 'ventilace',                     poznamka: '' },
+      { komin: 15, vyuziti: 'kotel byt č.3 a kotel byt č.4',poznamka: 'starší typ kotlů a vložek' },
+      { komin: 16, vyuziti: '',                               poznamka: '' },
+      { komin: 17, vyuziti: 'kotel',                         poznamka: '' },
+      { komin: 18, vyuziti: 'digestoř',                      poznamka: '' },
+      { komin: 19, vyuziti: 'digestoř',                      poznamka: 'stará vložka' },
+      { komin: 20, vyuziti: '',                               poznamka: '' },
+      { komin: 21, vyuziti: 'digestoř',                      poznamka: '' },
+      { komin: 22, vyuziti: 'kotel',                         poznamka: '' },
+    ];
+
     const bytyKominy = [
-      { byt: 1, kominy: [5, 6] },
-      { byt: 2, kominy: [] },
-      { byt: 3, kominy: [2, 8] },
-      { byt: 4, kominy: [2] },
-      { byt: 5, kominy: [4, 9] },
-      { byt: 6, kominy: [1] },
-      { byt: 7, kominy: [16] },
+      { byt: 1, kominy: [21, 22] },
+      { byt: 2, kominy: [1, 4, 13] },
+      { byt: 3, kominy: [15, 19] },
+      { byt: 4, kominy: [15] },
+      { byt: 5, kominy: [17, 18] },
+      { byt: 6, kominy: [3, 6, 7, 14] },
+      { byt: 7, kominy: [5] },
     ];
 
     function defaultPos(i) {
@@ -280,69 +374,69 @@
     }
 
     const sklep0Pos = [
-      {fx:0.5267,fy:0.4564},{fx:0.5617,fy:0.4719},{fx:0.655, fy:0.4891},
-      {fx:0.6642,fy:0.5432},{fx:0.6967,fy:0.5023},{fx:0.7608,fy:0.634 },
-      {fx:0.6467,fy:0.6091},{fx:0.6117,fy:0.6582},{fx:0.5817,fy:0.6091},
-      {fx:0.3325,fy:0.438 },{fx:0.2975,fy:0.4352},{fx:0.2675,fy:0.4189},
-      {fx:0.32,  fy:0.5429},{fx:0.2858,fy:0.5302},{fx:0.2483,fy:0.5375},
-      {fx:0.0275,fy:0.0475},{fx:0.1425,fy:0.5162},{fx:0.1492,fy:0.5425},
-      {fx:0.1733,fy:0.5421},{fx:0.1533,fy:0.5939},{fx:0.1533,fy:0.6238},
-      {fx:0.0633,fy:0.0458}
+      {fx:0.3322,fy:0.4405},{fx:0.2972,fy:0.4372},{fx:0.2677,fy:0.4267},
+      {fx:0.2487,fy:0.5313},{fx:0.2876,fy:0.5281},{fx:0.319, fy:0.5369},
+      {fx:0.6467,fy:0.6091},{fx:0.1453,fy:0.5145},{fx:0.1499,fy:0.5447},
+      {fx:0.177, fy:0.5431},{fx:0.1539,fy:0.5987},{fx:0.1793,fy:0.5973},
+      {fx:0.1564,fy:0.6281},{fx:0.5185,fy:0.4955},{fx:0.5492,fy:0.5088},
+      {fx:0.6448,fy:0.5341},{fx:0.6661,fy:0.5469},{fx:0.5801,fy:0.6109},
+      {fx:0.6142,fy:0.6105},{fx:0.646, fy:0.6107},{fx:0.6915,fy:0.5485},
+      {fx:0.7388,fy:0.6107}
     ];
 
     const patro1Pos = [
-      {fx:0.5449,fy:0.4692},{fx:0.5768,fy:0.5115},{fx:0.6686,fy:0.4998},
-      {fx:0.6826,fy:0.5431},{fx:0.7227,fy:0.5179},{fx:0.7238,fy:0.6555},
-      {fx:0.6418,fy:0.6134},{fx:0.6212,fy:0.662 },{fx:0.5988,fy:0.6098},
-      {fx:0.3085,fy:0.4373},{fx:0.2915,fy:0.3977},{fx:0.2628,fy:0.4292},
-      {fx:0.3085,fy:0.575 },{fx:0.2843,fy:0.5346},{fx:0.2682,fy:0.5759},
-      {fx:0.015, fy:0.0446},{fx:0.1076,fy:0.5446},{fx:0.1242,fy:0.5671},
-      {fx:0.1246,fy:0.5924},{fx:0.1185,fy:0.6149},{fx:0.1051,fy:0.6383},
-      {fx:0.0495,fy:0.0431}
+      {fx:0.3092,fy:0.4366},{fx:0.2923,fy:0.3941},{fx:0.263, fy:0.428 },
+      {fx:0.2638,fy:0.5739},{fx:0.287, fy:0.5375},{fx:0.3144,fy:0.5744},
+      {fx:0.6418,fy:0.6134},{fx:0.085, fy:0.5539},{fx:0.1218,fy:0.5772},
+      {fx:0.0794,fy:0.5901},{fx:0.1234,fy:0.6046},{fx:0.1492,fy:0.6035},
+      {fx:0.0888,fy:0.6374},{fx:0.5369,fy:0.5001},{fx:0.5874,fy:0.4762},
+      {fx:0.661, fy:0.5385},{fx:0.6935,fy:0.5036},{fx:0.6003,fy:0.6547},
+      {fx:0.6213,fy:0.612 },{fx:0.6453,fy:0.6559},{fx:0.7689,fy:0.5358},
+      {fx:0.7425,fy:0.6535}
     ];
 
     const patro2Pos = [
-      {fx:0.5158,fy:0.4893},{fx:0.5267,fy:0.5338},{fx:0.5858,fy:0.5097},
-      {fx:0.61,  fy:0.5545},{fx:0.7,   fy:0.5396},{fx:0.7342,fy:0.6742},
-      {fx:0.62,  fy:0.6336},{fx:0.595, fy:0.6763},{fx:0.57,  fy:0.6318},
-      {fx:0.3108,fy:0.4667},{fx:0.2983,fy:0.4221},{fx:0.2675,fy:0.4546},
-      {fx:0.2992,fy:0.5988},{fx:0.2808,fy:0.5598},{fx:0.2617,fy:0.5997},
-      {fx:0.035, fy:0.0382},{fx:0.1192,fy:0.5721},{fx:0.135, fy:0.5906},
-      {fx:0.1375,fy:0.6131},{fx:0.1367,fy:0.6373},{fx:0.12,  fy:0.6568},
-      {fx:0.0667,fy:0.0395}
+      {fx:0.3149,fy:0.465 },{fx:0.2976,fy:0.4203},{fx:0.2676,fy:0.457 },
+      {fx:0.2573,fy:0.6001},{fx:0.2773,fy:0.5568},{fx:0.3051,fy:0.5982},
+      {fx:0.0427,fy:0.051 },{fx:0.1014,fy:0.579 },{fx:0.1364,fy:0.5974},
+      {fx:0.0999,fy:0.6136},{fx:0.1401,fy:0.6268},{fx:0.1648,fy:0.6258},
+      {fx:0.1265,fy:0.6606},{fx:0.4999,fy:0.5264},{fx:0.5453,fy:0.4933},
+      {fx:0.5805,fy:0.5509},{fx:0.6219,fy:0.5194},{fx:0.5605,fy:0.6747},
+      {fx:0.5984,fy:0.6313},{fx:0.6212,fy:0.6809},{fx:0.6964,fy:0.5413},
+      {fx:0.734, fy:0.6748}
     ];
 
     const patro3Pos = [
-      {fx:0.5,   fy:0.4683},{fx:0.5208,fy:0.5148},{fx:0.595, fy:0.5008},
-      {fx:0.6208,fy:0.5465},{fx:0.7292,fy:0.5224},{fx:0.75,  fy:0.6553},
-      {fx:0.6208,fy:0.622 },{fx:0.5983,fy:0.6629},{fx:0.5767,fy:0.6192},
-      {fx:0.2967,fy:0.4446},{fx:0.2867,fy:0.4   },{fx:0.2567,fy:0.4344},
-      {fx:0.2883,fy:0.5805},{fx:0.2683,fy:0.5368},{fx:0.2492,fy:0.5786},
-      {fx:0.0275,fy:0.0426},{fx:0.1075,fy:0.5509},{fx:0.12,  fy:0.5714},
-      {fx:0.1217,fy:0.5957},{fx:0.1208,fy:0.6199},{fx:0.1075,fy:0.645 },
-      {fx:0.0558,fy:0.0429}
+      {fx:0.2955,fy:0.445 },{fx:0.2863,fy:0.3993},{fx:0.2559,fy:0.4349},
+      {fx:0.2453,fy:0.5799},{fx:0.2674,fy:0.5376},{fx:0.29,  fy:0.5803},
+      {fx:0.1763,fy:0.3981},{fx:0.0847,fy:0.5545},{fx:0.1222,fy:0.5766},
+      {fx:0.0812,fy:0.5885},{fx:0.1231,fy:0.6047},{fx:0.1476,fy:0.6046},
+      {fx:0.0883,fy:0.6352},{fx:0.4892,fy:0.5044},{fx:0.5328,fy:0.4783},
+      {fx:0.5884,fy:0.538 },{fx:0.6293,fy:0.5094},{fx:0.5782,fy:0.6606},
+      {fx:0.599, fy:0.6139},{fx:0.6244,fy:0.6604},{fx:0.722, fy:0.5244},
+      {fx:0.7603,fy:0.6599}
     ];
 
     const puda4Pos = [
-      {fx:0.5219,fy:0.4638},{fx:0.5465,fy:0.5043},{fx:0.6658,fy:0.5043},
-      {fx:0.6937,fy:0.5494},{fx:0.8645,fy:0.5458},{fx:0.8607,fy:0.6897},
-      {fx:0.6831,fy:0.6593},{fx:0.6634,fy:0.6944},{fx:0.6419,fy:0.6557},
-      {fx:0.3155,fy:0.4373},{fx:0.3029,fy:0.3959},{fx:0.2708,fy:0.4265},
-      {fx:0.2783,fy:0.5894},{fx:0.2577,fy:0.5526},{fx:0.2362,fy:0.5921},
-      {fx:0.1331,fy:0.4205},{fx:0.077, fy:0.5491},{fx:0.0892,fy:0.5734},
-      {fx:0.0897,fy:0.6014},{fx:0.0894,fy:0.6266},{fx:0.0733,fy:0.6482},
-      {fx:0.0401,fy:0.7427}
+      {fx:0.3208,fy:0.4358},{fx:0.3022,fy:0.3897},{fx:0.2691,fy:0.4279},
+      {fx:0.2346,fy:0.5913},{fx:0.2566,fy:0.5477},{fx:0.2776,fy:0.5909},
+      {fx:0.1505,fy:0.4393},{fx:0.05,  fy:0.5555},{fx:0.09,  fy:0.5783},
+      {fx:0.0455,fy:0.5939},{fx:0.0899,fy:0.6084},{fx:0.0862,fy:0.6371},
+      {fx:0.0643,fy:0.6537},{fx:0.5121,fy:0.5023},{fx:0.5567,fy:0.4663},
+      {fx:0.6574,fy:0.5426},{fx:0.7005,fy:0.5081},{fx:0.6429,fy:0.6964},
+      {fx:0.6645,fy:0.6508},{fx:0.6909,fy:0.6965},{fx:0.8548,fy:0.5466},
+      {fx:0.8537,fy:0.6914}
     ];
 
     const strecha5Pos = [
-      {fx:0.6475,fy:0.3647},{fx:0.6742,fy:0.2883},{fx:0.6842,fy:0.3817},
-      {fx:0.7117,fy:0.3114},{fx:0.9175,fy:0.3836},{fx:0.91,  fy:0.6851},
-      {fx:0.7525,fy:0.7082},{fx:0.7217,fy:0.7719},{fx:0.6958,fy:0.6998},
-      {fx:0.27,  fy:0.156 },{fx:0.25,  fy:0.0605},{fx:0.2158,fy:0.1306},
-      {fx:0.3025,fy:0.6017},{fx:0.2708,fy:0.5231},{fx:0.255, fy:0.6229},
-      {fx:0.1083,fy:0.2214},{fx:0.0192,fy:0.6163},{fx:0.035, fy:0.6567},
-      {fx:0.0375,fy:0.7159},{fx:0.0408,fy:0.7711},{fx:0.04,  fy:0.8412},
-      {fx:0.1033,fy:0.8813}
+      {fx:0.276, fy:0.1686},{fx:0.2507,fy:0.0506},{fx:0.2164,fy:0.1538},
+      {fx:0.2439,fy:0.6251},{fx:0.2698,fy:0.5037},{fx:0.3123,fy:0.6018},
+      {fx:0.1216,fy:0.229 },{fx:0.0162,fy:0.5983},{fx:0.0385,fy:0.6535},
+      {fx:0.0445,fy:0.7128},{fx:0.0498,fy:0.7729},{fx:0.0537,fy:0.8301},
+      {fx:0.0341,fy:0.9075},{fx:0.646, fy:0.3814},{fx:0.6767,fy:0.2772},
+      {fx:0.6887,fy:0.405 },{fx:0.7202,fy:0.311 },{fx:0.6927,fy:0.7867},
+      {fx:0.7205,fy:0.6771},{fx:0.7494,fy:0.7853},{fx:0.9111,fy:0.3767},
+      {fx:0.9015,fy:0.7543}
     ];
 
     // Per-picture positions: positions[pictureIndex][annotationIndex] = {fx, fy}
@@ -359,10 +453,10 @@
 
     // Annotation numbers (1-based) to hide per picture
     const hiddenPerPicture = [
-      new Set([16, 22]), // 0_sklep
-      new Set([16, 22]), // 1_patro
-      new Set([16, 22]), // 2_patro
-      new Set([16, 22]), // 3_patro
+      new Set([7]), // 0_sklep
+      new Set([7]), // 1_patro
+      new Set([7]), // 2_patro
+      new Set(),    // 3_patro
       new Set(),         // 4_puda
       new Set(),         // 5_strecha
     ];
@@ -405,9 +499,37 @@
       annEls.forEach(el => el.classList.remove("visible"));
     }
 
+    function updateVyuzitiBox() {
+      const infoBox = document.getElementById("info-box");
+      const list = document.getElementById("komin-info-list");
+      list.innerHTML = "";
+      if (activeByt === null) {
+        infoBox.style.display = "none";
+        return;
+      }
+      const entry = bytyKominy.find(b => b.byt === activeByt);
+      if (!entry || entry.kominy.length === 0) {
+        infoBox.style.display = "none";
+        return;
+      }
+      entry.kominy.forEach(kNum => {
+        const k = kominyVyuziti.find(x => x.komin === kNum);
+        const div = document.createElement("div");
+        div.className = "komin-entry";
+        const vyuziti = k && k.vyuziti ? k.vyuziti : '—';
+        const poznamka = k && k.poznamka ? k.poznamka : '';
+        div.innerHTML =
+          `<div><span class="komin-num">${kNum}.</span><span class="komin-vyuziti">${vyuziti}</span></div>` +
+          (poznamka ? `<div class="komin-poznamka">${poznamka}</div>` : '');
+        list.appendChild(div);
+      });
+      infoBox.style.display = "block";
+    }
+
     function selectByt(bytNum) {
       activeByt = activeByt === bytNum ? null : bytNum;
       updateHighlights();
+      updateVyuzitiBox();
       // Update active state in list
       document.querySelectorAll(".byt-item").forEach(el => {
         el.classList.toggle("active", parseInt(el.dataset.byt) === activeByt);
@@ -451,7 +573,57 @@
         el.textContent = i + 1;
         wrap.appendChild(el);
         annEls.push(el);
+        makeDraggable(el, i);
       }
+    }
+
+    function makeDraggable(el, annIndex) {
+      let startMouseX, startMouseY, startLeft, startTop;
+
+      function onStart(clientX, clientY) {
+        startMouseX = clientX;
+        startMouseY = clientY;
+        startLeft = parseFloat(el.style.left) || 0;
+        startTop  = parseFloat(el.style.top)  || 0;
+        el.classList.add("dragging");
+      }
+
+      function onMove(clientX, clientY) {
+        const img = document.getElementById("photo");
+        const ox = img.offsetLeft;
+        const oy = img.offsetTop;
+        let newLeft = startLeft + (clientX - startMouseX);
+        let newTop  = startTop  + (clientY - startMouseY);
+        newLeft = Math.max(ox, Math.min(ox + img.offsetWidth,  newLeft));
+        newTop  = Math.max(oy, Math.min(oy + img.offsetHeight, newTop));
+        el.style.left = newLeft + "px";
+        el.style.top  = newTop  + "px";
+        positions[current][annIndex].fx = (newLeft - ox) / img.offsetWidth;
+        positions[current][annIndex].fy = (newTop  - oy) / img.offsetHeight;
+      }
+
+      function onEnd() {
+        el.classList.remove("dragging");
+      }
+
+      el.addEventListener("mousedown", function (e) {
+        onStart(e.clientX, e.clientY);
+        e.preventDefault();
+        function move(e) { onMove(e.clientX, e.clientY); }
+        function up()    { onEnd(); document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); }
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+      });
+
+      el.addEventListener("touchstart", function (e) {
+        const t = e.touches[0];
+        onStart(t.clientX, t.clientY);
+        e.preventDefault();
+        function move(e) { const t = e.touches[0]; onMove(t.clientX, t.clientY); }
+        function end()   { onEnd(); document.removeEventListener("touchmove", move); document.removeEventListener("touchend", end); }
+        document.addEventListener("touchmove", move, { passive: false });
+        document.addEventListener("touchend", end);
+      }, { passive: false });
     }
 
     document.getElementById("photo").addEventListener("load", function () {
@@ -471,6 +643,17 @@
       if (e.key === "ArrowLeft")  navigate(-1);
       if (e.key === "ArrowRight") navigate(1);
     });
+
+    function exportPositions() {
+      const data = positions[current].map((p, i) => ({
+        n: i + 1, fx: +p.fx.toFixed(4), fy: +p.fy.toFixed(4)
+      }));
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+        const msg = document.getElementById("export-msg");
+        msg.style.display = "block";
+        setTimeout(() => msg.style.display = "none", 2000);
+      });
+    }
 
     buildBytList();
     initAnnotations();
