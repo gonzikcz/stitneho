@@ -153,6 +153,33 @@
       z-index: 15;
     }
 
+    .ann-tooltip {
+      position: fixed;
+      background: #222;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 7px;
+      padding: 8px 11px;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: #eee;
+      pointer-events: none;
+      z-index: 100;
+      max-width: 220px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+      display: none;
+    }
+
+    .ann-tooltip .tt-vyuziti {
+      font-weight: bold;
+      color: #ffcc00;
+    }
+
+    .ann-tooltip .tt-poznamka {
+      color: #bbb;
+      font-size: 0.75rem;
+      margin-top: 3px;
+    }
+
     .counter {
       margin-top: 16px;
       font-size: 0.9rem;
@@ -283,6 +310,7 @@
         </div>
         <div class="image-wrap" id="image-wrap">
           <img id="photo" src="" alt="">
+          <div class="ann-tooltip" id="ann-tooltip"></div>
         </div>
         <div class="nav-col">
           <button class="jump-btn" onclick="jumpTo(5)">Strecha</button>
@@ -553,12 +581,45 @@
       }
     }
 
+    const tooltip = document.getElementById("ann-tooltip");
+
+    function showTooltip(e, kominNum) {
+      const k = kominyVyuziti.find(x => x.komin === kominNum);
+      const vyuziti = k && k.vyuziti ? k.vyuziti : '—';
+      const poznamka = k && k.poznamka ? k.poznamka : '';
+      const byty = bytyKominy.filter(b => b.kominy.includes(kominNum)).map(b => `byt ${b.byt}`);
+      const bytInfo = byty.length ? ` (${byty.join(', ')})` : '';
+      tooltip.innerHTML =
+        `<div class="tt-vyuziti">Komín ${kominNum}: ${vyuziti}${bytInfo}</div>` +
+        (poznamka ? `<div class="tt-poznamka">${poznamka}</div>` : '');
+      tooltip.style.display = 'block';
+      moveTooltip(e);
+    }
+
+    function moveTooltip(e) {
+      const offset = 14;
+      let x = e.clientX + offset;
+      let y = e.clientY + offset;
+      if (x + 240 > window.innerWidth)  x = e.clientX - 240;
+      if (y + 80  > window.innerHeight) y = e.clientY - 80;
+      tooltip.style.left = x + 'px';
+      tooltip.style.top  = y + 'px';
+    }
+
+    function hideTooltip() {
+      tooltip.style.display = 'none';
+    }
+
     function initAnnotations() {
       const wrap = document.getElementById("image-wrap");
       for (let i = 0; i < ANNOTATION_COUNT; i++) {
         const el = document.createElement("div");
         el.className = "annotation";
         el.textContent = i + 1;
+        const kominNum = i + 1;
+        el.addEventListener("mouseenter", e => showTooltip(e, kominNum));
+        el.addEventListener("mousemove",  e => moveTooltip(e));
+        el.addEventListener("mouseleave", hideTooltip);
         wrap.appendChild(el);
         annEls.push(el);
       }
