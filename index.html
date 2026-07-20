@@ -295,9 +295,59 @@
       font-size: 0.74rem;
       margin-top: 2px;
     }
+
+    .mode-switch {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      gap: 6px;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 6px;
+    }
+
+    .mode-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: #aaa;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .mode-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #eee;
+    }
+
+    .mode-btn.active {
+      background: rgba(51, 153, 255, 0.2);
+      border-color: rgba(51, 153, 255, 0.6);
+      color: #fff;
+    }
+
+    .annotation.stoupacka {
+      background: #3399ff;
+      border-radius: 4px;
+      color: #fff;
+    }
+
+    .annotation.stoupacka.highlighted {
+      background: #ff4422;
+    }
   </style>
 </head>
 <body>
+
+  <div class="mode-switch" id="mode-switch">
+    <button class="mode-btn active" data-mode="kominy" onclick="setMode('kominy')">Komíny</button>
+    <button class="mode-btn" data-mode="stoupacky" onclick="setMode('stoupacky')">Stoupačky</button>
+  </div>
 
   <div class="layout">
     <div class="main">
@@ -323,11 +373,11 @@
 
     <div class="panels-col">
       <div class="side-panel">
-        <h2>Byty &amp; komíny</h2>
+        <h2 id="side-panel-title">Byty &amp; komíny</h2>
         <div id="byt-list"></div>
       </div>
       <div class="info-box" id="info-box">
-        <h2>Využití komínů</h2>
+        <h2 id="info-box-title">Využití komínů</h2>
         <div id="komin-info-list"></div>
       </div>
     </div>
@@ -343,9 +393,11 @@
       "5_strecha.jpg"
     ];
 
-    const ANNOTATION_COUNT = 22;
+    const ANNOTATION_COUNT = 23;
+    const STOUPACKA_COUNT = 10;
     let current = 0;
     let activeByt = null;
+    let mode = 'kominy';
 
     const kominyVyuziti = [
       { komin:  1, vyuziti: 'krb?',                          poznamka: 'vyvložkováno nerezem průměrem 160mm přes bytovou jednotku č. 2 až do sklepa' },
@@ -370,6 +422,7 @@
       { komin: 20, vyuziti: '',                               poznamka: '' },
       { komin: 21, vyuziti: 'digestoř',                      poznamka: '' },
       { komin: 22, vyuziti: 'kotel',                         poznamka: '' },
+      { komin: 23, vyuziti: 'ventilace',                     poznamka: '' },
     ];
 
     const bytyKominy = [
@@ -377,9 +430,33 @@
       { byt: 2, kominy: [1, 4, 13] },
       { byt: 3, kominy: [15, 19] },
       { byt: 4, kominy: [15] },
-      { byt: 5, kominy: [17, 18] },
+      { byt: 5, kominy: [17, 18, 23] },
       { byt: 6, kominy: [3, 6, 7, 14] },
       { byt: 7, kominy: [5] },
+    ];
+
+    const stoupackyVyuziti = [
+      { komin:  1, vyuziti: 'hlavní uzávěr', poznamka: 'plast, přístup vjezd' },
+      { komin:  2, vyuziti: 'hlavní přívod', poznamka: 'plast, přístup sklep byt 3' },
+      { komin:  3, vyuziti: 'voda',          poznamka: 'plast, výměna červen 2026' },
+      { komin:  4, vyuziti: 'voda',          poznamka: 'plast, nová přípojka asi 2021' },
+      { komin:  5, vyuziti: 'voda',          poznamka: 'plast 2021 po strop byt 1, pak olovo' },
+      { komin:  6, vyuziti: 'voda',          poznamka: 'olovo' },
+      { komin:  7, vyuziti: 'voda',          poznamka: 'plast' },
+      { komin:  8, vyuziti: 'voda',          poznamka: 'olovo' },
+      { komin:  9, vyuziti: 'voda',          poznamka: 'olovo' },
+      { komin: 10, vyuziti: 'voda',          poznamka: 'olovo' },
+    ];
+
+    const bytyStoupacky = [
+      { byt: 0, kominy: [1, 2] },
+      { byt: 1, kominy: [4] },
+      { byt: 2, kominy: [7] },
+      { byt: 3, kominy: [3, 5, 6] },
+      { byt: 4, kominy: [6] },
+      { byt: 5, kominy: [3] },
+      { byt: 6, kominy: [6] },
+      { byt: 7, kominy: [8] },
     ];
 
     function defaultPos(i) {
@@ -397,7 +474,7 @@
       {fx:0.1564,fy:0.6281},{fx:0.5185,fy:0.4955},{fx:0.5492,fy:0.5088},
       {fx:0.6448,fy:0.5341},{fx:0.6661,fy:0.5469},{fx:0.5801,fy:0.6109},
       {fx:0.6142,fy:0.6105},{fx:0.646, fy:0.6107},{fx:0.6915,fy:0.5485},
-      {fx:0.7388,fy:0.6107}
+      {fx:0.7388,fy:0.6107},{fx:0.85,  fy:0.05}
     ];
 
     const patro1Pos = [
@@ -408,7 +485,7 @@
       {fx:0.0888,fy:0.6374},{fx:0.5369,fy:0.5001},{fx:0.5874,fy:0.4762},
       {fx:0.661, fy:0.5385},{fx:0.6935,fy:0.5036},{fx:0.6003,fy:0.6547},
       {fx:0.6213,fy:0.612 },{fx:0.6453,fy:0.6559},{fx:0.7689,fy:0.5358},
-      {fx:0.7425,fy:0.6535}
+      {fx:0.7425,fy:0.6535},{fx:0.85,  fy:0.05}
     ];
 
     const patro2Pos = [
@@ -419,7 +496,7 @@
       {fx:0.1265,fy:0.6606},{fx:0.4999,fy:0.5264},{fx:0.5453,fy:0.4933},
       {fx:0.5805,fy:0.5509},{fx:0.6219,fy:0.5194},{fx:0.5605,fy:0.6747},
       {fx:0.5984,fy:0.6313},{fx:0.6212,fy:0.6809},{fx:0.6964,fy:0.5413},
-      {fx:0.734, fy:0.6748}
+      {fx:0.734, fy:0.6748},{fx:0.85,  fy:0.05}
     ];
 
     const patro3Pos = [
@@ -430,7 +507,7 @@
       {fx:0.0883,fy:0.6352},{fx:0.4892,fy:0.5044},{fx:0.5328,fy:0.4783},
       {fx:0.5884,fy:0.538 },{fx:0.6293,fy:0.5094},{fx:0.5782,fy:0.6606},
       {fx:0.599, fy:0.6139},{fx:0.6244,fy:0.6604},{fx:0.722, fy:0.5244},
-      {fx:0.7603,fy:0.6599}
+      {fx:0.7603,fy:0.6599},{fx:0.5455,fy:0.5545}
     ];
 
     const puda4Pos = [
@@ -441,7 +518,7 @@
       {fx:0.0643,fy:0.6537},{fx:0.5121,fy:0.5023},{fx:0.5567,fy:0.4663},
       {fx:0.6574,fy:0.5426},{fx:0.7005,fy:0.5081},{fx:0.6429,fy:0.6964},
       {fx:0.6645,fy:0.6508},{fx:0.6909,fy:0.6965},{fx:0.8548,fy:0.5466},
-      {fx:0.8537,fy:0.6914}
+      {fx:0.8537,fy:0.6914},{fx:0.6067,fy:0.5159}
     ];
 
     const strecha5Pos = [
@@ -452,7 +529,7 @@
       {fx:0.0341,fy:0.9075},{fx:0.646, fy:0.3814},{fx:0.6767,fy:0.2772},
       {fx:0.6887,fy:0.405 },{fx:0.7202,fy:0.311 },{fx:0.6927,fy:0.7867},
       {fx:0.7205,fy:0.6771},{fx:0.7494,fy:0.7853},{fx:0.9111,fy:0.3767},
-      {fx:0.9015,fy:0.7543}
+      {fx:0.9015,fy:0.7543},{fx:0.85,  fy:0.05}
     ];
 
     // Per-picture positions: positions[pictureIndex][annotationIndex] = {fx, fy}
@@ -469,16 +546,92 @@
 
     // Annotation numbers (1-based) to hide per picture
     const hiddenPerPicture = [
-      new Set([7]), // 0_sklep
-      new Set([7]), // 1_patro
-      new Set([7]), // 2_patro
-      new Set(),    // 3_patro
-      new Set(),         // 4_puda
-      new Set(),         // 5_strecha
+      new Set([7, 23]), // 0_sklep
+      new Set([7, 23]), // 1_patro
+      new Set([7, 23]), // 2_patro
+      new Set(),        // 3_patro
+      new Set(),        // 4_puda
+      new Set([23]),    // 5_strecha
     ];
 
-    // The 22 DOM elements (reused across pictures)
-    const annEls = [];
+    const stoupacky0Pos = [
+      {fx:0.7818,fy:0.3712},{fx:0.7332,fy:0.3776},{fx:0.7412,fy:0.581 },
+      {fx:0.6413,fy:0.5395},{fx:0.5738,fy:0.6115},{fx:0.5334,fy:0.5279},
+      {fx:0.3827,fy:0.534 },{fx:0.3282,fy:0.4465},{fx:0.387, fy:0.458 },
+      {fx:0.025, fy:0.19  }
+    ];
+
+    const stoupacky1Pos = [
+      {fx:0.7776,fy:0.3725},{fx:0.085, fy:0.025 },{fx:0.7344,fy:0.5655},
+      {fx:0.6377,fy:0.5407},{fx:0.5513,fy:0.6656},{fx:0.5725,fy:0.4635},
+      {fx:0.3786,fy:0.5855},{fx:0.3026,fy:0.4452},{fx:0.3004,fy:0.5031},
+      {fx:0.025, fy:0.19  }
+    ];
+
+    const stoupacky2Pos = [
+      {fx:0.025, fy:0.025},{fx:0.085, fy:0.025 },{fx:0.7016,fy:0.5797},
+      {fx:0.025, fy:0.08 },{fx:0.5146,fy:0.7016},{fx:0.518, fy:0.5536},
+      {fx:0.025, fy:0.135},{fx:0.2859,fy:0.4773},{fx:0.2443,fy:0.6228},
+      {fx:0.025, fy:0.19  }
+    ];
+
+    const stoupacky3Pos = [
+      {fx:0.025,  fy:0.025 },{fx:0.085, fy:0.025 },{fx:0.7113,fy:0.5617},
+      {fx:0.0285, fy:0.0864},{fx:0.5048,fy:0.6849},{fx:0.5049,fy:0.533 },
+      {fx:0.025,  fy:0.135 },{fx:0.2892,fy:0.4593},{fx:0.2304,fy:0.5983},
+      {fx:0.025,  fy:0.19  }
+    ];
+
+    const stoupacky4Pos = [
+      {fx:0.025,  fy:0.025 },{fx:0.085, fy:0.025 },{fx:0.145, fy:0.025 },
+      {fx:0.025,  fy:0.08  },{fx:0.085, fy:0.08  },{fx:0.145, fy:0.08  },
+      {fx:0.025,  fy:0.135 },{fx:0.0825,fy:0.1401},{fx:0.2287,fy:0.6215},
+      {fx:0.025,  fy:0.19  }
+    ];
+
+    // Stoupačky don't have real positions yet on most floors - placeholder grid, except 0_sklep, 1_patro, 2_patro, 3_patro and 4_puda.
+    const stoupackyPositions = pictures.map((_, picIndex) =>
+      Array.from({ length: STOUPACKA_COUNT }, (_, i) =>
+        picIndex === 4 ? { ...stoupacky4Pos[i] } :
+        picIndex === 3 ? { ...stoupacky3Pos[i] } :
+        picIndex === 2 ? { ...stoupacky2Pos[i] } :
+        picIndex === 1 ? { ...stoupacky1Pos[i] } :
+        picIndex === 0 ? { ...stoupacky0Pos[i] } :
+        defaultPos(i)
+      )
+    );
+
+    const stoupackyHiddenPerPicture = pictures.map(() => new Set());
+
+    const modeConfig = {
+      kominy: {
+        label: 'Komín',
+        count: ANNOTATION_COUNT,
+        vyuziti: kominyVyuziti,
+        bytyList: bytyKominy,
+        positions: positions,
+        hidden: hiddenPerPicture,
+        elClass: '',
+        sideTitle: 'Byty &amp; komíny',
+        infoTitle: 'Využití komínů',
+        unitLabel: 'komíny',
+      },
+      stoupacky: {
+        label: 'Stoupačka',
+        count: STOUPACKA_COUNT,
+        vyuziti: stoupackyVyuziti,
+        bytyList: bytyStoupacky,
+        positions: stoupackyPositions,
+        hidden: stoupackyHiddenPerPicture,
+        elClass: 'stoupacka',
+        sideTitle: 'Byty &amp; stoupačky',
+        infoTitle: 'Využití stoupaček',
+        unitLabel: 'stoupačky',
+      },
+    };
+
+    // DOM elements per mode (reused across pictures)
+    const annEls = { kominy: [], stoupacky: [] };
 
     function nameFromFile(filename) {
       return filename.replace(/\.[^.]+$/, "").replace(/_/g, " ");
@@ -490,16 +643,28 @@
       const oy = img.offsetTop;
       const w  = img.offsetWidth;
       const h  = img.offsetHeight;
-      positions[picIndex].forEach((pos, i) => {
-        annEls[i].style.left = (ox + pos.fx * w) + "px";
-        annEls[i].style.top  = (oy + pos.fy * h) + "px";
+      Object.keys(modeConfig).forEach(m => {
+        modeConfig[m].positions[picIndex].forEach((pos, i) => {
+          annEls[m][i].style.left = (ox + pos.fx * w) + "px";
+          annEls[m][i].style.top  = (oy + pos.fy * h) + "px";
+        });
+      });
+    }
+
+    function updateVisibility() {
+      Object.keys(modeConfig).forEach(m => {
+        const hiddenSet = modeConfig[m].hidden[current];
+        annEls[m].forEach((el, i) => {
+          el.classList.toggle("visible", m === mode && !hiddenSet.has(i + 1));
+        });
       });
     }
 
     function updateHighlights() {
-      const entry = activeByt !== null ? bytyKominy.find(b => b.byt === activeByt) : null;
+      const cfg = modeConfig[mode];
+      const entry = activeByt !== null ? cfg.bytyList.find(b => b.byt === activeByt) : null;
       const highlighted = new Set(entry ? entry.kominy : []);
-      annEls.forEach((el, i) => {
+      annEls[mode].forEach((el, i) => {
         el.classList.toggle("highlighted", highlighted.has(i + 1));
       });
     }
@@ -512,10 +677,11 @@
       document.getElementById("prev").disabled = index === 0;
       document.getElementById("next").disabled = index === pictures.length - 1;
 
-      annEls.forEach(el => el.classList.remove("visible"));
+      Object.values(annEls).flat().forEach(el => el.classList.remove("visible"));
     }
 
     function updateVyuzitiBox() {
+      const cfg = modeConfig[mode];
       const infoBox = document.getElementById("info-box");
       const list = document.getElementById("komin-info-list");
       list.innerHTML = "";
@@ -523,13 +689,13 @@
         infoBox.style.display = "none";
         return;
       }
-      const entry = bytyKominy.find(b => b.byt === activeByt);
+      const entry = cfg.bytyList.find(b => b.byt === activeByt);
       if (!entry || entry.kominy.length === 0) {
         infoBox.style.display = "none";
         return;
       }
       entry.kominy.forEach(kNum => {
-        const k = kominyVyuziti.find(x => x.komin === kNum);
+        const k = cfg.vyuziti.find(x => x.komin === kNum);
         const div = document.createElement("div");
         div.className = "komin-entry";
         const vyuziti = k && k.vyuziti ? k.vyuziti : '—';
@@ -553,19 +719,37 @@
     }
 
     function buildBytList() {
+      const cfg = modeConfig[mode];
+      document.getElementById("side-panel-title").innerHTML = cfg.sideTitle;
+      document.getElementById("info-box-title").textContent = cfg.infoTitle;
       const container = document.getElementById("byt-list");
-      bytyKominy.forEach(({ byt, kominy }) => {
+      container.innerHTML = "";
+      cfg.bytyList.forEach(({ byt, kominy }) => {
         const div = document.createElement("div");
         div.className = "byt-item" + (kominy.length === 0 ? " empty" : "");
         div.dataset.byt = byt;
         div.innerHTML =
           `<div class="byt-name">Byt č.${byt}</div>` +
-          `<div class="byt-kominy">${kominy.length ? "komíny: " + kominy.join(", ") : "—"}</div>`;
+          `<div class="byt-kominy">${kominy.length ? cfg.unitLabel + ": " + kominy.join(", ") : "—"}</div>`;
         if (kominy.length > 0) {
           div.addEventListener("click", () => selectByt(byt));
         }
         container.appendChild(div);
       });
+    }
+
+    function setMode(m) {
+      if (mode === m || !modeConfig[m]) return;
+      mode = m;
+      activeByt = null;
+      document.querySelectorAll(".mode-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.mode === m);
+      });
+      document.querySelectorAll(".byt-item").forEach(el => el.classList.remove("active"));
+      buildBytList();
+      updateVyuzitiBox();
+      updateVisibility();
+      updateHighlights();
     }
 
     function jumpTo(index) {
@@ -583,14 +767,15 @@
 
     const tooltip = document.getElementById("ann-tooltip");
 
-    function showTooltip(e, kominNum) {
-      const k = kominyVyuziti.find(x => x.komin === kominNum);
+    function showTooltip(e, m, num) {
+      const cfg = modeConfig[m];
+      const k = cfg.vyuziti.find(x => x.komin === num);
       const vyuziti = k && k.vyuziti ? k.vyuziti : '—';
       const poznamka = k && k.poznamka ? k.poznamka : '';
-      const byty = bytyKominy.filter(b => b.kominy.includes(kominNum)).map(b => `byt ${b.byt}`);
+      const byty = cfg.bytyList.filter(b => b.kominy.includes(num)).map(b => `byt ${b.byt}`);
       const bytInfo = byty.length ? ` (${byty.join(', ')})` : '';
       tooltip.innerHTML =
-        `<div class="tt-vyuziti">Komín ${kominNum}: ${vyuziti}${bytInfo}</div>` +
+        `<div class="tt-vyuziti">${cfg.label} ${num}: ${vyuziti}${bytInfo}</div>` +
         (poznamka ? `<div class="tt-poznamka">${poznamka}</div>` : '');
       tooltip.style.display = 'block';
       moveTooltip(e);
@@ -610,26 +795,24 @@
       tooltip.style.display = 'none';
     }
 
-    function initAnnotations() {
+    function initAnnotationsFor(m) {
+      const cfg = modeConfig[m];
       const wrap = document.getElementById("image-wrap");
-      for (let i = 0; i < ANNOTATION_COUNT; i++) {
+      for (let i = 0; i < cfg.count; i++) {
         const el = document.createElement("div");
-        el.className = "annotation";
+        el.className = "annotation" + (cfg.elClass ? " " + cfg.elClass : "");
         el.textContent = i + 1;
-        const kominNum = i + 1;
-        el.addEventListener("mouseenter", e => showTooltip(e, kominNum));
+        const num = i + 1;
+        el.addEventListener("mouseenter", e => showTooltip(e, m, num));
         el.addEventListener("mousemove",  e => moveTooltip(e));
         el.addEventListener("mouseleave", hideTooltip);
         wrap.appendChild(el);
-        annEls.push(el);
+        annEls[m].push(el);
       }
     }
 
     document.getElementById("photo").addEventListener("load", function () {
-      const hidden = hiddenPerPicture[current];
-      annEls.forEach((el, i) => {
-        el.classList.toggle("visible", !hidden.has(i + 1));
-      });
+      updateVisibility();
       updateHighlights();
       applyPositions(current);
     });
@@ -644,7 +827,8 @@
     });
 
     buildBytList();
-    initAnnotations();
+    initAnnotationsFor('kominy');
+    initAnnotationsFor('stoupacky');
     show(0);
   </script>
 
