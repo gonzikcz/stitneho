@@ -153,6 +153,20 @@
       z-index: 15;
     }
 
+    .annotation.draggable {
+      cursor: grab;
+    }
+
+    .annotation.dragging {
+      cursor: grabbing;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8);
+      z-index: 20;
+    }
+
+    .annotation.dragging.highlighted {
+      z-index: 20;
+    }
+
     .ann-tooltip {
       position: fixed;
       background: #222;
@@ -369,6 +383,8 @@
       </div>
 
       <div class="counter" id="counter"></div>
+      <button id="export-btn" onclick="exportPositions()" style="margin-top:12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.8rem;">Copy positions (current picture)</button>
+      <div id="export-msg" style="margin-top:6px;font-size:0.75rem;color:#6f6;display:none;">Copied to clipboard!</div>
     </div>
 
     <div class="panels-col">
@@ -615,6 +631,7 @@
         sideTitle: 'Byty &amp; komíny',
         infoTitle: 'Využití komínů',
         unitLabel: 'komíny',
+        isDraggable: num => num === 23, // only the newest chimney needs positioning
       },
       stoupacky: {
         label: 'Stoupačka',
@@ -627,6 +644,7 @@
         sideTitle: 'Byty &amp; stoupačky',
         infoTitle: 'Využití stoupaček',
         unitLabel: 'stoupačky',
+        isDraggable: () => true, // none of these have real positions yet
       },
     };
 
@@ -808,7 +826,60 @@
         el.addEventListener("mouseleave", hideTooltip);
         wrap.appendChild(el);
         annEls[m].push(el);
+        if (cfg.isDraggable(num)) {
+          el.classList.add("draggable");
+          makeDraggable(el, m, i);
+        }
       }
+    }
+
+    function makeDraggable(el, m, annIndex) {
+      let startMouseX, startMouseY, startLeft, startTop;
+
+      function onStart(clientX, clientY) {
+        startMouseX = clientX;
+        startMouseY = clientY;
+        startLeft = parseFloat(el.style.left) || 0;
+        startTop  = parseFloat(el.style.top)  || 0;
+        el.classList.add("dragging");
+      }
+
+      function onMove(clientX, clientY) {
+        const img = document.getElementById("photo");
+        const ox = img.offsetLeft;
+        const oy = img.offsetTop;
+        let newLeft = startLeft + (clientX - startMouseX);
+        let newTop  = startTop  + (clientY - startMouseY);
+        newLeft = Math.max(ox, Math.min(ox + img.offsetWidth,  newLeft));
+        newTop  = Math.max(oy, Math.min(oy + img.offsetHeight, newTop));
+        el.style.left = newLeft + "px";
+        el.style.top  = newTop  + "px";
+        modeConfig[m].positions[current][annIndex].fx = (newLeft - ox) / img.offsetWidth;
+        modeConfig[m].positions[current][annIndex].fy = (newTop  - oy) / img.offsetHeight;
+      }
+
+      function onEnd() {
+        el.classList.remove("dragging");
+      }
+
+      el.addEventListener("mousedown", function (e) {
+        onStart(e.clientX, e.clientY);
+        e.preventDefault();
+        function move(e) { onMove(e.clientX, e.clientY); }
+        function up()    { onEnd(); document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); }
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+      });
+
+      el.addEventListener("touchstart", function (e) {
+        const t = e.touches[0];
+        onStart(t.clientX, t.clientY);
+        e.preventDefault();
+        function move(e) { const t = e.touches[0]; onMove(t.clientX, t.clientY); }
+        function end()   { onEnd(); document.removeEventListener("touchmove", move); document.removeEventListener("touchend", end); }
+        document.addEventListener("touchmove", move, { passive: false });
+        document.addEventListener("touchend", end);
+      }, { passive: false });
     }
 
     document.getElementById("photo").addEventListener("load", function () {
@@ -825,6 +896,18 @@
       if (e.key === "ArrowLeft")  navigate(-1);
       if (e.key === "ArrowRight") navigate(1);
     });
+
+    function exportPositions() {
+      const cfg = modeConfig[mode];
+      const data = cfg.positions[current].map((p, i) => ({
+        n: i + 1, fx: +p.fx.toFixed(4), fy: +p.fy.toFixed(4)
+      }));
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+        const msg = document.getElementById("export-msg");
+        msg.style.display = "block";
+        setTimeout(() => msg.style.display = "none", 2000);
+      });
+    }
 
     buildBytList();
     initAnnotationsFor('kominy');
