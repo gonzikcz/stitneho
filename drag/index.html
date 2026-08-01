@@ -153,6 +153,20 @@
       z-index: 15;
     }
 
+    .annotation.draggable {
+      cursor: grab;
+    }
+
+    .annotation.dragging {
+      cursor: grabbing;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8);
+      z-index: 20;
+    }
+
+    .annotation.dragging.highlighted {
+      z-index: 20;
+    }
+
     .ann-tooltip {
       position: fixed;
       background: #222;
@@ -367,9 +381,24 @@
       cursor: default;
     }
 
+    .pipe-line-active {
+      stroke: #66ddff;
+    }
+
     .pipe-line.highlighted {
       stroke: #ff4422;
       stroke-width: 5;
+    }
+
+    .pipe-line-draft {
+      stroke: #ff9900;
+      stroke-dasharray: 6 4;
+    }
+
+    .pipe-point {
+      fill: #ff9900;
+      stroke: #fff;
+      stroke-width: 1;
     }
 
     .pipe-label {
@@ -382,6 +411,56 @@
       stroke-width: 3px;
       pointer-events: visiblePainted;
       cursor: default;
+    }
+
+    #pipe-toolbar {
+      margin-top: 12px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pipe-numbers {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .pipe-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .pipe-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #ccc;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .pipe-number-btn {
+      width: 36px;
+      padding: 6px 0;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .pipe-number-btn.has-line {
+      border-color: rgba(51, 153, 255, 0.7);
+      background: rgba(51, 153, 255, 0.18);
+    }
+
+    .pipe-btn.active {
+      background: rgba(255, 153, 0, 0.25);
+      border-color: rgba(255, 153, 0, 0.7);
+      color: #fff;
     }
   </style>
 </head>
@@ -418,6 +497,21 @@
       </div>
 
       <div class="counter" id="counter"></div>
+      <button id="export-btn" onclick="exportPositions()" style="margin-top:12px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);color:#ccc;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.8rem;">Copy positions (current picture)</button>
+      <div id="export-msg" style="margin-top:6px;font-size:0.75rem;color:#6f6;display:none;">Copied to clipboard!</div>
+
+      <div id="pipe-toolbar">
+        <div class="pipe-numbers" id="pipe-numbers"></div>
+        <div class="pipe-actions">
+          <button id="draw-pipe-btn" class="pipe-btn" onclick="toggleDrawPipe()">Draw pipe</button>
+          <button class="pipe-btn" onclick="undoPipePoint()">Undo point</button>
+          <button class="pipe-btn" onclick="clearPipeDraft()">Clear</button>
+          <button class="pipe-btn" onclick="savePipe()">Save pipe</button>
+          <button class="pipe-btn" onclick="deletePipe()">Delete pipe</button>
+          <button class="pipe-btn" onclick="exportPipes()">Copy pipe lines (current picture)</button>
+        </div>
+      </div>
+      <div id="pipe-export-msg" style="margin-top:6px;font-size:0.75rem;color:#6f6;display:none;">Copied to clipboard!</div>
     </div>
 
     <div class="panels-col">
@@ -434,12 +528,12 @@
 
   <script>
     const pictures = [
-      "0_sklep.jpg",
-      "1_patro.jpg",
-      "2_patro.jpg",
-      "3_patro.jpg",
-      "4_puda.jpg",
-      "5_strecha.jpg"
+      "../0_sklep.jpg",
+      "../1_patro.jpg",
+      "../2_patro.jpg",
+      "../3_patro.jpg",
+      "../4_puda.jpg",
+      "../5_strecha.jpg"
     ];
 
     const ANNOTATION_COUNT = 23;
@@ -449,6 +543,9 @@
     let activeByt = null;
     let mode = 'kominy';
     let subMode = 'ventily'; // 'ventily' (points) or 'pipes' (lines), only meaningful when mode === 'stoupacky'
+    let drawingPipe = false;
+    let currentPipePoints = [];
+    let activePipeNumber = null;
 
     const kominyVyuziti = [
       { komin:  1, vyuziti: 'krb?',                          poznamka: 'vyvložkováno nerezem průměrem 160mm přes bytovou jednotku č. 2 až do sklepa' },
@@ -655,7 +752,6 @@
     const stoupackyHiddenPerPicture = pictures.map(() => new Set());
 
     // Per-picture pipes, keyed by number (1-10, same numbering as the ventily); each pipe is an ordered array of {fx, fy} points.
-    // Filled in as pipe geometry is authored in drag/index.html.
     const stoupackyLines = pictures.map(() => ({}));
     stoupackyLines[0][1] = [
       {fx:0.7685,fy:0.3396},{fx:0.7378,fy:0.3409},{fx:0.7473,fy:0.6188},
@@ -675,6 +771,7 @@
         sideTitle: 'Byty &amp; komíny',
         infoTitle: 'Využití komínů',
         unitLabel: 'komíny',
+        isDraggable: num => num === 23, // only the newest chimney needs positioning
       },
       stoupacky: {
         label: 'Ventil',
@@ -687,6 +784,7 @@
         sideTitle: 'Byty &amp; Stoupačky',
         infoTitle: 'Využití stoupaček',
         unitLabel: 'stoupačky',
+        isDraggable: () => true, // none of these have real positions yet
       },
     };
 
@@ -709,7 +807,7 @@
           annEls[m][i].style.top  = (oy + pos.fy * h) + "px";
         });
       });
-      renderPipes();
+      syncPipeOverlay();
     }
 
     function updateVisibility() {
@@ -719,49 +817,6 @@
         annEls[m].forEach((el, i) => {
           el.classList.toggle("visible", showMode && !hiddenSet.has(i + 1));
         });
-      });
-    }
-
-    function renderPipes() {
-      const svg = document.getElementById("pipe-svg");
-      const img = document.getElementById("photo");
-      svg.setAttribute("width", img.offsetWidth);
-      svg.setAttribute("height", img.offsetHeight);
-      svg.style.left = img.offsetLeft + "px";
-      svg.style.top  = img.offsetTop + "px";
-      svg.style.width  = img.offsetWidth + "px";
-      svg.style.height = img.offsetHeight + "px";
-      svg.innerHTML = "";
-      if (mode !== 'stoupacky' || subMode !== 'pipes') return;
-
-      const w = img.offsetWidth;
-      const h = img.offsetHeight;
-      const svgNS = "http://www.w3.org/2000/svg";
-
-      const cfg = modeConfig.stoupacky;
-      const entry = activeByt !== null ? cfg.bytyList.find(b => b.byt === activeByt) : null;
-      const highlighted = new Set(entry ? entry.kominy : []);
-
-      PIPE_NUMBERS.forEach(number => {
-        const pipe = stoupackyLines[current][number];
-        if (!pipe) return;
-        const poly = document.createElementNS(svgNS, "polyline");
-        poly.setAttribute("points", pipe.map(p => (p.fx * w) + "," + (p.fy * h)).join(" "));
-        poly.setAttribute("class", "pipe-line" + (highlighted.has(number) ? " highlighted" : ""));
-        poly.addEventListener("mouseenter", e => showTooltip(e, 'stoupacky', number, 'Stoupačka'));
-        poly.addEventListener("mousemove",  e => moveTooltip(e));
-        poly.addEventListener("mouseleave", hideTooltip);
-        svg.appendChild(poly);
-
-        const label = document.createElementNS(svgNS, "text");
-        label.setAttribute("x", pipe[0].fx * w + 8);
-        label.setAttribute("y", pipe[0].fy * h - 8);
-        label.setAttribute("class", "pipe-label");
-        label.textContent = number;
-        label.addEventListener("mouseenter", e => showTooltip(e, 'stoupacky', number, 'Stoupačka'));
-        label.addEventListener("mousemove",  e => moveTooltip(e));
-        label.addEventListener("mouseleave", hideTooltip);
-        svg.appendChild(label);
       });
     }
 
@@ -886,12 +941,33 @@
       document.getElementById("submode-switch").style.display = isStoupacky ? "flex" : "none";
 
       document.getElementById("side-panel").style.display = "block";
+      const showVentilyExport = mode === 'kominy' || (isStoupacky && subMode === 'ventily');
+      document.getElementById("export-btn").style.display = showVentilyExport ? "inline-block" : "none";
 
+      const showPipes = isStoupacky && subMode === 'pipes';
+      document.getElementById("pipe-toolbar").style.display = showPipes ? "flex" : "none";
+      document.getElementById("pipe-export-msg").style.display = "none";
+
+      if (!showPipes) {
+        drawingPipe = false;
+        activePipeNumber = null;
+        currentPipePoints = [];
+        document.getElementById("draw-pipe-btn").classList.remove("active");
+        document.getElementById("image-wrap").style.cursor = "";
+      } else {
+        if (!activePipeNumber) activePipeNumber = PIPE_NUMBERS[0];
+        loadDraftForActiveNumber();
+      }
+      updatePipeNumberButtons();
       renderPipes();
     }
 
     function jumpTo(index) {
       current = index;
+      if (mode === 'stoupacky' && subMode === 'pipes') {
+        loadDraftForActiveNumber();
+        updatePipeNumberButtons();
+      }
       show(current);
     }
 
@@ -899,6 +975,10 @@
       const next = current + dir;
       if (next >= 0 && next < pictures.length) {
         current = next;
+        if (mode === 'stoupacky' && subMode === 'pipes') {
+          loadDraftForActiveNumber();
+          updatePipeNumberButtons();
+        }
         show(current);
       }
     }
@@ -947,8 +1027,230 @@
         el.addEventListener("mouseleave", hideTooltip);
         wrap.appendChild(el);
         annEls[m].push(el);
+        if (cfg.isDraggable(num)) {
+          el.classList.add("draggable");
+          makeDraggable(el, m, i);
+        }
       }
     }
+
+    function makeDraggable(el, m, annIndex) {
+      let startMouseX, startMouseY, startLeft, startTop;
+
+      function onStart(clientX, clientY) {
+        startMouseX = clientX;
+        startMouseY = clientY;
+        startLeft = parseFloat(el.style.left) || 0;
+        startTop  = parseFloat(el.style.top)  || 0;
+        el.classList.add("dragging");
+      }
+
+      function onMove(clientX, clientY) {
+        const img = document.getElementById("photo");
+        const ox = img.offsetLeft;
+        const oy = img.offsetTop;
+        let newLeft = startLeft + (clientX - startMouseX);
+        let newTop  = startTop  + (clientY - startMouseY);
+        newLeft = Math.max(ox, Math.min(ox + img.offsetWidth,  newLeft));
+        newTop  = Math.max(oy, Math.min(oy + img.offsetHeight, newTop));
+        el.style.left = newLeft + "px";
+        el.style.top  = newTop  + "px";
+        modeConfig[m].positions[current][annIndex].fx = (newLeft - ox) / img.offsetWidth;
+        modeConfig[m].positions[current][annIndex].fy = (newTop  - oy) / img.offsetHeight;
+      }
+
+      function onEnd() {
+        el.classList.remove("dragging");
+      }
+
+      el.addEventListener("mousedown", function (e) {
+        onStart(e.clientX, e.clientY);
+        e.preventDefault();
+        function move(e) { onMove(e.clientX, e.clientY); }
+        function up()    { onEnd(); document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); }
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+      });
+
+      el.addEventListener("touchstart", function (e) {
+        const t = e.touches[0];
+        onStart(t.clientX, t.clientY);
+        e.preventDefault();
+        function move(e) { const t = e.touches[0]; onMove(t.clientX, t.clientY); }
+        function end()   { onEnd(); document.removeEventListener("touchmove", move); document.removeEventListener("touchend", end); }
+        document.addEventListener("touchmove", move, { passive: false });
+        document.addEventListener("touchend", end);
+      }, { passive: false });
+    }
+
+    function syncPipeOverlay() {
+      const img = document.getElementById("photo");
+      const svg = document.getElementById("pipe-svg");
+      svg.setAttribute("width", img.offsetWidth);
+      svg.setAttribute("height", img.offsetHeight);
+      svg.style.left = img.offsetLeft + "px";
+      svg.style.top  = img.offsetTop + "px";
+      svg.style.width  = img.offsetWidth + "px";
+      svg.style.height = img.offsetHeight + "px";
+      renderPipes();
+    }
+
+    function renderPipes() {
+      const svg = document.getElementById("pipe-svg");
+      svg.innerHTML = "";
+      if (mode !== 'stoupacky' || subMode !== 'pipes') return;
+
+      const img = document.getElementById("photo");
+      const w = img.offsetWidth;
+      const h = img.offsetHeight;
+      const svgNS = "http://www.w3.org/2000/svg";
+
+      function addPolyline(points, cls) {
+        const poly = document.createElementNS(svgNS, "polyline");
+        poly.setAttribute("points", points.map(p => (p.fx * w) + "," + (p.fy * h)).join(" "));
+        poly.setAttribute("class", cls);
+        svg.appendChild(poly);
+        return poly;
+      }
+
+      function addDot(p, cls) {
+        const c = document.createElementNS(svgNS, "circle");
+        c.setAttribute("cx", p.fx * w);
+        c.setAttribute("cy", p.fy * h);
+        c.setAttribute("r", 4);
+        c.setAttribute("class", cls);
+        svg.appendChild(c);
+      }
+
+      function addLabel(p, text) {
+        const t = document.createElementNS(svgNS, "text");
+        t.setAttribute("x", p.fx * w + 8);
+        t.setAttribute("y", p.fy * h - 8);
+        t.setAttribute("class", "pipe-label");
+        t.textContent = text;
+        svg.appendChild(t);
+        return t;
+      }
+
+      const cfg = modeConfig.stoupacky;
+      const entry = activeByt !== null ? cfg.bytyList.find(b => b.byt === activeByt) : null;
+      const highlighted = new Set(entry ? entry.kominy : []);
+
+      PIPE_NUMBERS.forEach(number => {
+        const pipe = stoupackyLines[current][number];
+        if (!pipe) return;
+        const cls = "pipe-line" +
+          (number === activePipeNumber ? " pipe-line-active" : "") +
+          (highlighted.has(number) ? " highlighted" : "");
+        const poly = addPolyline(pipe, cls);
+        poly.addEventListener("mouseenter", e => showTooltip(e, 'stoupacky', number, 'Stoupačka'));
+        poly.addEventListener("mousemove",  e => moveTooltip(e));
+        poly.addEventListener("mouseleave", hideTooltip);
+        const label = addLabel(pipe[0], number);
+        label.addEventListener("mouseenter", e => showTooltip(e, 'stoupacky', number, 'Stoupačka'));
+        label.addEventListener("mousemove",  e => moveTooltip(e));
+        label.addEventListener("mouseleave", hideTooltip);
+      });
+
+      if (currentPipePoints.length > 0) {
+        if (currentPipePoints.length > 1) addPolyline(currentPipePoints, "pipe-line pipe-line-draft");
+        currentPipePoints.forEach(p => addDot(p, "pipe-point"));
+      }
+    }
+
+    function buildPipeNumberButtons() {
+      const container = document.getElementById("pipe-numbers");
+      container.innerHTML = "";
+      PIPE_NUMBERS.forEach(number => {
+        const btn = document.createElement("button");
+        btn.className = "pipe-btn pipe-number-btn";
+        btn.dataset.number = number;
+        btn.textContent = number;
+        btn.onclick = () => selectPipeNumber(number);
+        container.appendChild(btn);
+      });
+    }
+
+    function updatePipeNumberButtons() {
+      document.querySelectorAll(".pipe-number-btn").forEach(btn => {
+        const number = +btn.dataset.number;
+        btn.classList.toggle("active", number === activePipeNumber);
+        btn.classList.toggle("has-line", !!stoupackyLines[current][number]);
+      });
+    }
+
+    function loadDraftForActiveNumber() {
+      const saved = activePipeNumber ? stoupackyLines[current][activePipeNumber] : null;
+      currentPipePoints = saved ? saved.map(p => ({ ...p })) : [];
+    }
+
+    function selectPipeNumber(number) {
+      if (mode !== 'stoupacky' || subMode !== 'pipes') return;
+      activePipeNumber = number;
+      loadDraftForActiveNumber();
+      drawingPipe = false;
+      document.getElementById("draw-pipe-btn").classList.remove("active");
+      document.getElementById("image-wrap").style.cursor = "";
+      updatePipeNumberButtons();
+      renderPipes();
+    }
+
+    function toggleDrawPipe() {
+      if (!activePipeNumber) return;
+      drawingPipe = !drawingPipe;
+      document.getElementById("draw-pipe-btn").classList.toggle("active", drawingPipe);
+      document.getElementById("image-wrap").style.cursor = drawingPipe ? "crosshair" : "";
+    }
+
+    function undoPipePoint() {
+      currentPipePoints.pop();
+      renderPipes();
+    }
+
+    function clearPipeDraft() {
+      currentPipePoints = [];
+      renderPipes();
+    }
+
+    function savePipe() {
+      if (!activePipeNumber || currentPipePoints.length < 2) return;
+      stoupackyLines[current][activePipeNumber] = currentPipePoints.map(p => ({ ...p }));
+      updatePipeNumberButtons();
+      renderPipes();
+    }
+
+    function deletePipe() {
+      if (!activePipeNumber) return;
+      delete stoupackyLines[current][activePipeNumber];
+      currentPipePoints = [];
+      updatePipeNumberButtons();
+      renderPipes();
+    }
+
+    function exportPipes() {
+      const data = {};
+      PIPE_NUMBERS.forEach(number => {
+        const pipe = stoupackyLines[current][number];
+        if (pipe) data[number] = pipe.map(p => ({ fx: +p.fx.toFixed(4), fy: +p.fy.toFixed(4) }));
+      });
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+        const msg = document.getElementById("pipe-export-msg");
+        msg.style.display = "block";
+        setTimeout(() => msg.style.display = "none", 2000);
+      });
+    }
+
+    document.getElementById("image-wrap").addEventListener("click", function (e) {
+      if (!drawingPipe || mode !== 'stoupacky' || subMode !== 'pipes' || !activePipeNumber) return;
+      if (e.target.closest(".annotation")) return;
+      const img = document.getElementById("photo");
+      const rect = img.getBoundingClientRect();
+      const fx = (e.clientX - rect.left) / rect.width;
+      const fy = (e.clientY - rect.top) / rect.height;
+      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return;
+      currentPipePoints.push({ fx, fy });
+      renderPipes();
+    });
 
     document.getElementById("photo").addEventListener("load", function () {
       updateVisibility();
@@ -965,9 +1267,22 @@
       if (e.key === "ArrowRight") navigate(1);
     });
 
+    function exportPositions() {
+      const cfg = modeConfig[mode];
+      const data = cfg.positions[current].map((p, i) => ({
+        n: i + 1, fx: +p.fx.toFixed(4), fy: +p.fy.toFixed(4)
+      }));
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+        const msg = document.getElementById("export-msg");
+        msg.style.display = "block";
+        setTimeout(() => msg.style.display = "none", 2000);
+      });
+    }
+
     buildBytList();
     initAnnotationsFor('kominy');
     initAnnotationsFor('stoupacky');
+    buildPipeNumberButtons();
     show(0);
   </script>
 
