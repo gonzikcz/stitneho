@@ -109,6 +109,7 @@
       flex-shrink: 0;
       background: rgba(0, 0, 0, 0.25);
       border-radius: 8px;
+      overflow: hidden;
     }
 
     .image-wrap img {
@@ -117,6 +118,19 @@
       border-radius: 8px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
       display: block;
+      transition: transform 0.2s ease-out;
+    }
+
+    .image-wrap.planky img {
+      cursor: zoom-in;
+    }
+
+    .image-wrap.planky img.zoomed {
+      cursor: zoom-out;
+    }
+
+    img.zoomed {
+      transform: scale(2.5);
     }
 
     .annotation {
@@ -469,6 +483,7 @@
   <div class="mode-switch" id="mode-switch">
     <button class="mode-btn active" data-mode="kominy" onclick="setMode('kominy')">Komíny</button>
     <button class="mode-btn" data-mode="stoupacky" onclick="setMode('stoupacky')">Stoupačky</button>
+    <button class="mode-btn" data-mode="planky" onclick="setMode('planky')">Plánky</button>
   </div>
 
   <div class="layout">
@@ -578,7 +593,7 @@
       { byt: 2, kominy: [1, 4, 13] },
       { byt: 3, kominy: [15, 19] },
       { byt: 4, kominy: [15] },
-      { byt: 5, kominy: [17, 18, 23] },
+      { byt: 5, kominy: [16, 18, 23] },
       { byt: 6, kominy: [3, 6, 7, 14] },
       { byt: 7, kominy: [5] },
     ];
@@ -832,6 +847,7 @@
 
     function updateHighlights() {
       const cfg = modeConfig[mode];
+      if (!cfg) { renderPipes(); return; }
       const entry = activeByt !== null ? cfg.bytyList.find(b => b.byt === activeByt) : null;
       const highlighted = new Set(entry ? entry.kominy : []);
       annEls[mode].forEach((el, i) => {
@@ -847,6 +863,7 @@
       document.getElementById("counter").textContent = (index + 1) + " / " + pictures.length;
       document.getElementById("prev").disabled = index === 0;
       document.getElementById("next").disabled = index === pictures.length - 1;
+      resetZoom();
 
       Object.values(annEls).flat().forEach(el => el.classList.remove("visible"));
     }
@@ -856,6 +873,10 @@
       const infoBox = document.getElementById("info-box");
       const list = document.getElementById("komin-info-list");
       list.innerHTML = "";
+      if (!cfg) {
+        infoBox.style.display = "none";
+        return;
+      }
       if (activeByt === null) {
         infoBox.style.display = "none";
         return;
@@ -911,9 +932,10 @@
     }
 
     function setMode(m) {
-      if (mode === m || !modeConfig[m]) return;
+      if (mode === m || (m !== 'planky' && !modeConfig[m])) return;
       mode = m;
       activeByt = null;
+      resetZoom();
       if (m === 'stoupacky') {
         subMode = 'ventily';
         document.querySelectorAll("#submode-switch .mode-btn").forEach(btn => {
@@ -924,7 +946,9 @@
         btn.classList.toggle("active", btn.dataset.mode === m);
       });
       document.querySelectorAll(".byt-item").forEach(el => el.classList.remove("active"));
-      buildBytList();
+      document.getElementById("image-wrap").classList.toggle("planky", m === 'planky');
+      document.getElementById("photo").title = m === 'planky' ? 'Klikněte pro přiblížení / oddálení' : '';
+      if (m !== 'planky') buildBytList();
       updateVyuzitiBox();
       updateVisibility();
       updateHighlights();
@@ -950,7 +974,7 @@
       const isStoupacky = mode === 'stoupacky';
       document.getElementById("submode-switch").style.display = isStoupacky ? "flex" : "none";
 
-      document.getElementById("side-panel").style.display = "block";
+      document.getElementById("side-panel").style.display = mode === 'planky' ? "none" : "block";
       const showVentilyExport = mode === 'kominy' || (isStoupacky && subMode === 'ventily');
       document.getElementById("export-btn").style.display = showVentilyExport ? "inline-block" : "none";
 
@@ -970,6 +994,36 @@
       }
       updatePipeNumberButtons();
       renderPipes();
+    }
+
+    function setZoomOrigin(e) {
+      const img = document.getElementById("photo");
+      const rect = img.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      img.style.transformOrigin = x + "% " + y + "%";
+    }
+
+    function togglePhotoZoom(e) {
+      if (mode !== 'planky') return;
+      const img = document.getElementById("photo");
+      if (img.classList.contains("zoomed")) {
+        resetZoom();
+      } else {
+        setZoomOrigin(e);
+        img.classList.add("zoomed");
+      }
+    }
+
+    function moveZoom(e) {
+      const img = document.getElementById("photo");
+      if (img.classList.contains("zoomed")) setZoomOrigin(e);
+    }
+
+    function resetZoom() {
+      const img = document.getElementById("photo");
+      img.classList.remove("zoomed");
+      img.style.transformOrigin = "";
     }
 
     function jumpTo(index) {
@@ -1267,6 +1321,9 @@
       updateHighlights();
       applyPositions(current);
     });
+
+    document.getElementById("photo").addEventListener("click", togglePhotoZoom);
+    document.getElementById("photo").addEventListener("mousemove", moveZoom);
 
     window.addEventListener("resize", function () {
       applyPositions(current);
